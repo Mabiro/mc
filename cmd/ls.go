@@ -135,6 +135,7 @@ func doList(clnt Client, isRecursive, isIncomplete bool) error {
 			cErr = exitStatus(globalErrorExitStatus) // Set the exit status.
 			continue
 		}
+
 		// Convert any os specific delimiters to "/".
 		contentURL := filepath.ToSlash(content.URL.Path)
 		prefixPath = filepath.ToSlash(prefixPath)
@@ -142,9 +143,9 @@ func doList(clnt Client, isRecursive, isIncomplete bool) error {
 		// Trim prefix path from the content path.
 		contentURL = strings.TrimPrefix(contentURL, prefixPath)
 		content.URL.Path = contentURL
-		parsedContent := parseContent(content)
+
 		// Print colorized or jsonized content info.
-		printMsg(parsedContent)
+		printMsg(parseContent(content))
 	}
 	return cErr
 }

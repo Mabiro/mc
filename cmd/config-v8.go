@@ -41,6 +41,7 @@ type hostConfigV8 struct {
 	AccessKey string `json:"accessKey"`
 	SecretKey string `json:"secretKey"`
 	API       string `json:"api"`
+	IdpURL    string `json:"idpURL"`
 }
 
 // configV8 config version.

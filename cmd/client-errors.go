@@ -83,6 +83,15 @@ func (e ObjectAlreadyExistsAsDirectory) Error() string {
 	return "Object `" + e.Object + "` already exists as directory."
 }
 
+// InvalidAccessKeyID - invalid access key id.
+type InvalidAccessKeyID struct {
+	msg string
+}
+
+func (e InvalidAccessKeyID) Error() string {
+	return e.msg + " Please use 'mc config host add' to re-authenticate"
+}
+
 // ObjectOnGlacier - object is of storage class glacier.
 type ObjectOnGlacier struct {
 	Object string

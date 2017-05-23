@@ -17,11 +17,20 @@
 package cmd
 
 import (
-	urlpkg "net/url"
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
+	"syscall"
 
+	"github.com/anaskhan96/soup"
 	"github.com/fatih/color"
+	"github.com/levigross/grequests"
 	"github.com/minio/cli"
 	"github.com/minio/mc/pkg/console"
+	"github.com/minio/minio-go/pkg/credentials"
+	"github.com/minio/minio/pkg/probe"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 var configHostAddCmd = cli.Command{
@@ -58,6 +67,10 @@ EXAMPLES:
 
 // checkConfigHostAddSyntax - verifies input arguments to 'config host add'.
 func checkConfigHostAddSyntax(ctx *cli.Context) {
+	if !ctx.Args().Present() {
+		return
+	}
+
 	args := ctx.Args()
 	argsNr := len(args)
 	if argsNr < 4 || argsNr > 5 {
@@ -65,35 +78,13 @@ func checkConfigHostAddSyntax(ctx *cli.Context) {
 			"Incorrect number of arguments for host add command.")
 	}
 
-	alias := args.Get(0)
-	url := args.Get(1)
-	accessKey := args.Get(2)
-	secretKey := args.Get(3)
-	api := args.Get(4)
-
-	if !isValidAlias(alias) {
-		fatalIf(errDummy().Trace(alias), "Invalid alias `"+alias+"`.")
-	}
-
-	if !isValidHostURL(url) {
-		fatalIf(errDummy().Trace(url),
-			"Invalid URL `"+url+"`.")
-	}
-
-	if !isValidAccessKey(accessKey) {
-		fatalIf(errInvalidArgument().Trace(accessKey),
-			"Invalid access key `"+accessKey+"`.")
-	}
-
-	if !isValidSecretKey(secretKey) {
-		fatalIf(errInvalidArgument().Trace(secretKey),
-			"Invalid secret key `"+secretKey+"`.")
-	}
-
-	if api != "" && !isValidAPI(api) { // Empty value set to default "S3v4".
-		fatalIf(errInvalidArgument().Trace(api),
-			"Unrecognized API signature. Valid options are `[S3v4, S3v2]`.")
-	}
+	signatureAttr{
+		alias:     args.Get(0),
+		endpoint:  args.Get(1),
+		accessKey: args.Get(2),
+		secretKey: args.Get(3),
+		signType:  args.Get(4),
+	}.checkSignatureAttrs()
 }
 
 // addHost - add a host config.
@@ -117,36 +108,155 @@ func addHost(alias string, hostCfgV8 hostConfigV8) {
 	})
 }
 
+func getSAMLAssertion(sa samlAttr) (string, *probe.Error) {
+	httpSess := grequests.NewSession(nil)
+
+	resp, e := httpSess.Get(sa.idpURL, nil)
+	if e != nil {
+		return "", probe.NewError(e)
+	}
+
+	samlLogin := soup.HTMLParse(resp.String())
+	resp.Close()
+
+	payload := extractPayload(samlLogin)
+	payload["username"] = sa.username
+	payload["password"] = sa.password
+	resp, e = httpSess.Post(getURL(resp.RawResponse.Request.URL),
+		&grequests.RequestOptions{
+			Data:         payload,
+			UseCookieJar: true,
+		},
+	)
+	if e != nil {
+		return "", probe.NewError(e)
+	}
+
+	samlAssertion := soup.HTMLParse(resp.String())
+	resp.Close()
+
+	return extractSAMLAssertion(samlAssertion), nil
+}
+
+type signatureAttr struct {
+	alias     string
+	endpoint  string
+	accessKey string
+	secretKey string
+	signType  string
+	idpURL    string
+}
+
+func (s signatureAttr) checkSignatureAttrs() {
+	if !isValidAlias(s.alias) {
+		fatalIf(errDummy().Trace(s.alias), "Invalid alias `"+s.alias+"`.")
+	}
+
+	if !isValidHostURL(s.endpoint) {
+		fatalIf(errDummy().Trace(s.endpoint),
+			"Invalid URL `"+s.endpoint+"`.")
+	}
+
+	if !isValidAccessKey(s.accessKey) {
+		fatalIf(errInvalidArgument().Trace(s.accessKey),
+			"Invalid access key `"+s.accessKey+"`.")
+	}
+
+	if !isValidSecretKey(s.secretKey) {
+		fatalIf(errInvalidArgument().Trace(s.secretKey),
+			"Invalid secret key `"+s.secretKey+"`.")
+	}
+
+	// Empty value set to default "S3v4".
+	if s.signType != "" && !isValidAPI(s.signType) {
+		fatalIf(errInvalidArgument().Trace(s.signType),
+			"Unrecognized API signature. Valid options are `[S3v4, S3v2]`.")
+	}
+}
+
+func readSignatureAttr() signatureAttr {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Print("Username: ")
+	username, _ := reader.ReadString('\n')
+
+	fmt.Print("Password: ")
+	bytePassword, _ := terminal.ReadPassword(int(syscall.Stdin))
+	password := string(bytePassword)
+	fmt.Println()
+
+	fmt.Print("SignatureType [S3v4]: ")
+	signType, _ := reader.ReadString('\n')
+	if strings.TrimSpace(signType) == "" {
+		signType = "S3v4"
+	}
+
+	fmt.Println()
+	return signatureAttr{
+		accessKey: strings.TrimSpace(username),
+		secretKey: strings.TrimSpace(password),
+		signType:  strings.TrimSpace(signType),
+	}
+}
+
 func mainConfigHostAdd(ctx *cli.Context) error {
 	checkConfigHostAddSyntax(ctx)
 
 	console.SetColor("HostMessage", color.New(color.FgGreen))
 
 	args := ctx.Args()
-	alias := args.Get(0)
-	url := args.Get(1)
-	accessKey := args.Get(2)
-	secretKey := args.Get(3)
-	api := args.Get(4)
+	sa := signatureAttr{
+		alias:     args.Get(0),
+		endpoint:  args.Get(1),
+		accessKey: args.Get(2),
+		secretKey: args.Get(3),
+	}
+	signType := args.Get(4)
+	if signType == "" {
+		signType = "S3v4"
+	}
+	sa.signType = signType
 
-	parsedURL, _ := urlpkg.Parse(url)
+	if !args.Present() {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print("AuthType [regular]: ")
+		authType, _ := reader.ReadString('\n')
 
-	if isGoogle(parsedURL.Host) {
-		if api == "S3v4" {
-			fatalIf(errInvalidArgument().Trace(api), "Unsupported API signature for url. Please use `mc config host add "+alias+" "+url+" "+accessKey+" "+secretKey+" S3v2` instead.")
+		fmt.Print("Alias: ")
+		alias, _ := reader.ReadString('\n')
+		alias = strings.TrimSpace(alias)
+
+		fmt.Print("Endpoint: ")
+		endpoint, _ := reader.ReadString('\n')
+		endpoint = strings.TrimSpace(endpoint)
+
+		if strings.TrimSpace(authType) == "saml" {
+			credsValue, idpURL, err := getSTSCreds(endpoint)
+			fatalIf(err.Trace(endpoint), "Unable to fetch sts credentials")
+			sa = signatureAttr{
+				alias:     alias,
+				endpoint:  endpoint,
+				accessKey: credsValue.AccessKeyID,
+				secretKey: credsValue.SecretAccessKey,
+				signType:  credentials.SignatureV4.String(), // Signature v4 is default signer for all rolling access keys.
+				idpURL:    idpURL,
+			}
+		} else {
+			sa = readSignatureAttr()
+			sa.alias = alias
+			sa.endpoint = endpoint
+			sa.checkSignatureAttrs()
 		}
-		api = "S3v2"
 	}
 
-	if api == "" {
-		api = "S3v4"
-	}
 	hostCfg := hostConfigV8{
-		URL:       url,
-		AccessKey: accessKey,
-		SecretKey: secretKey,
-		API:       api,
+		URL:       sa.endpoint,
+		AccessKey: sa.accessKey,
+		SecretKey: sa.secretKey,
+		API:       sa.signType,
+		IdpURL:    sa.idpURL,
 	}
-	addHost(alias, hostCfg) // Add a host with specified credentials.
+
+	addHost(sa.alias, hostCfg) // Add a host with specified credentials.
 	return nil
 }

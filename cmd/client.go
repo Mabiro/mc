@@ -87,6 +87,7 @@ type Config struct {
 	SecretKey   string
 	Signature   string
 	HostURL     string
+	IdpURL      string
 	AppName     string
 	AppVersion  string
 	AppComments []string

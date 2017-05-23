@@ -130,6 +130,7 @@ func buildS3Config(alias, urlStr string) (*Config, *probe.Error) {
 	s3Config.AppVersion = Version
 	s3Config.AppComments = []string{os.Args[0], runtime.GOOS, runtime.GOARCH}
 	s3Config.HostURL = urlStr
+	s3Config.IdpURL = hostCfg.IdpURL
 	s3Config.Debug = globalDebug
 	s3Config.Insecure = globalInsecure
 

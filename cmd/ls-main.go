@@ -135,8 +135,8 @@ func mainList(ctx *cli.Context) error {
 		if st, err = clnt.Stat(isIncomplete); err != nil {
 			switch err.ToGoError().(type) {
 			case BucketNameEmpty:
-			// For aliases like ``mc ls s3`` it's acceptable to receive BucketNameEmpty error.
-			// Nothing to do.
+			// For aliases like ``mc ls s3`` it's acceptable to
+			// receive BucketNameEmpty error. Nothing to do.
 			default:
 				fatalIf(err.Trace(targetURL), "Unable to initialize target `"+targetURL+"`.")
 			}
