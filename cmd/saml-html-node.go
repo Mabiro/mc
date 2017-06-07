@@ -43,6 +43,26 @@ func (h htmlNode) GetValue() string {
 	return ""
 }
 
+func extractOTP(root soup.Root) (otpPayload map[string]string) {
+	otpPayload = make(map[string]string)
+	for _, input := range root.FindAll("input") {
+		n := htmlNode{input.Pointer}
+		name := n.GetName()
+		value := n.GetValue()
+		if value == "GO" {
+			otpPayload[name] = value
+			break
+		}
+		switch name {
+		case "otp":
+			otpPayload[name] = ""
+		default:
+			otpPayload[name] = value
+		}
+	}
+	return otpPayload
+}
+
 func extractPayload(root soup.Root) (payload map[string]string) {
 	payload = make(map[string]string)
 	for _, input := range root.FindAll("input") {

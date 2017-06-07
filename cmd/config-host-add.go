@@ -132,6 +132,21 @@ func getSAMLAssertion(sa samlAttr) (string, *probe.Error) {
 		return "", probe.NewError(e)
 	}
 
+	otpLogin := soup.HTMLParse(resp.String())
+	resp.Close()
+
+	otpPayload := extractOTP(otpLogin)
+	otpPayload["otp"] = sa.otp
+	resp, e = httpSess.Post(getURL(resp.RawResponse.Request.URL),
+		&grequests.RequestOptions{
+			Data:         otpPayload,
+			UseCookieJar: true,
+		},
+	)
+	if e != nil {
+		return "", probe.NewError(e)
+	}
+
 	samlAssertion := soup.HTMLParse(resp.String())
 	resp.Close()
 

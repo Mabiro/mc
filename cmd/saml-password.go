@@ -31,6 +31,7 @@ import (
 type samlAttr struct {
 	username string
 	password string
+	otp      string
 	idpURL   string
 }
 
@@ -41,23 +42,22 @@ const (
 func readSAMLAttr() samlAttr {
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Print("Username: ")
+	fmt.Print("Enter Username: ")
 	username, _ := reader.ReadString('\n')
 	username = strings.TrimSpace(username)
 
-	fmt.Print("Password: ")
+	fmt.Print("Enter Password: ")
 	bytePassword, _ := terminal.ReadPassword(int(syscall.Stdin))
 	password := string(bytePassword)
 	password = strings.TrimSpace(password)
 	fmt.Println()
 
-	fmt.Print("SAML Provider id [https://rosalind.stanford.edu]: ")
+	fmt.Print("SAML Provider id [minio-stanford]: ")
 	providerID, _ := reader.ReadString('\n')
 	providerID = strings.TrimSpace(providerID)
 	if providerID == "" {
-		providerID = "https://rosalind.stanford.edu/"
+		providerID = "minio-stanford"
 	}
-	// Provider ID is opaque string doesn't have to be a proper URL.
 
 	fmt.Print("SAML IdP URL: [https://idp-uat.stanford.edu]: ")
 	idpURL, _ := reader.ReadString('\n')
@@ -77,9 +77,16 @@ func readSAMLAttr() samlAttr {
 
 	fmt.Println()
 
+	fmt.Print("Enter OTP: ")
+	byteOTP, _ := terminal.ReadPassword(int(syscall.Stdin))
+	otp := string(byteOTP)
+	otp = strings.TrimSpace(otp)
+	fmt.Println()
+
 	return samlAttr{
 		username: username,
 		password: password,
+		otp:      otp,
 		idpURL:   u.String(),
 	}
 }
